@@ -4,7 +4,7 @@ import flet as ft
 COLORS = [
     ft.Colors.AMBER,
     ft.Colors.BLACK,
-    ft.colors.BLUE,
+    ft.Colors.BLUE,
     ft.Colors.BROWN,
     ft.Colors.CYAN,
     ft.Colors.CYAN_ACCENT,

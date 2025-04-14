@@ -1,22 +1,3 @@
-# class StorageManager:
-#     def __init__(self, page):
-#         self.page = page
-
-#     def get_keys(self, prefix=""):
-#         return self.page.client_storage.get_keys(prefix)
-
-#     def get(self, key):
-#         return self.page.client_storage.get(key)
-
-#     def set(self, key, value):
-#         self.page.client_storage.set(key, value)
-
-#     def contains_key(self, key):
-#         return self.page.client_storage.contains_key(key)
-
-#     def remove(self, key):
-#         self.page.client_storage.remove(key)
-
 class StorageManager:
     def __init__(self, page):
         self.page = page

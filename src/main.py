@@ -1,7 +1,6 @@
 import time
 import threading
 from datetime import datetime
-import pprint
 import random
 
 import flet as ft
@@ -36,7 +35,6 @@ class WordTrainer:
         self.session_duration_min = 0
 
         # Инициализация переменных состояния
-        self.current_word_index = self.storage.get("current_word_index", default=0)
         self.delay = self.storage.get("delay", default=1)
         self.order_learning_words = self.storage.get("order_learning_words", default="1")
         self.is_transcription = self.storage.get("is_transcription", default=True)
@@ -51,6 +49,12 @@ class WordTrainer:
         self.current_list_name = list(self.word_lists.keys())[0] if self.word_lists else "default"
         self.selected_words_bool = decompress_bool_list_from_hex(self.word_lists[self.current_list_name], len(self.words))
 
+        # Инициализация индекса текущего слова
+        if self.current_list_name == "default":
+            self.current_word_indices = 0
+        else:
+            self.current_word_indices = self.selected_words_bool.index(True)
+
         # Инициализация статистики
         self.monthly_statistics = {}
         raw_monthly_statistics = {}
@@ -59,6 +63,62 @@ class WordTrainer:
 
         # Сортировка статистики по дням
         self.monthly_statistics = dict(sorted(raw_monthly_statistics.items(), key=lambda item: int(item[0].split('-')[-1])))
+
+        # Инициализация темы
+        if not self.page.client_storage.contains_key("theme_mode"):
+            self.page.client_storage.set("theme_mode", "LIGHT")
+        if self.page.client_storage.get("theme_mode") == 'LIGHT':
+            self.page.theme_mode = ft.ThemeMode.LIGHT
+        elif self.page.client_storage.get("theme_mode") == 'DARK':
+            self.page.theme_mode = ft.ThemeMode.DARK
+
+    def get_position_last_true(self, bool_list):
+        position_last_true = 0
+        for i, v in enumerate(bool_list):
+            if v:
+                position_last_true = i + 1
+        return position_last_true
+
+    def get_index_words_min(self):
+        if self.current_list_name == "default":
+            min = 0
+        else:
+            min = self.selected_words_bool.index(True)
+        return min
+
+    def get_index_words_max(self):
+        if self.current_list_name == "default":
+            max = len(self.words) - 1
+        else:
+            max = self.get_position_last_true(self.selected_words_bool) - 1
+        return max
+
+    def get_words_slider_divisions(self):
+        divisions = 1
+        if self.current_list_name == "default":
+            divisions = len(self.words)
+        else:
+            if self.selected_words_bool.count(True):
+                divisions = self.selected_words_bool.count(True)
+        return max(divisions - 1, 1)
+
+    def exit_modal_yes_click(self, e):
+        self.page.close(self.exit_modal)
+        if self.page.platform == ft.PagePlatform.ANDROID:
+            pass
+        elif self.page.platform == ft.PagePlatform.ANDROID_TV:
+            pass
+        elif self.page.platform == ft.PagePlatform.IOS:
+            pass
+        elif self.page.platform == ft.PagePlatform.MACOS:
+            self.page.window.destroy()
+        elif self.page.platform == ft.PagePlatform.LINUX:
+            self.page.window.destroy()
+        elif self.page.platform == ft.PagePlatform.WINDOWS:
+            self.page.window.destroy()
+
+    def exit_modal_no_click(self, e):
+        self.page.close(self.exit_modal)
 
     def setup_ui(self):
         """Настройка пользовательского интерфейса."""
@@ -74,15 +134,22 @@ class WordTrainer:
 
         self.delay_control = ft.Slider(min=1, max=10, value=self.delay, divisions=9, label="Ускорение {value}", on_change=self.set_delay)
         self.theme_control = ft.Switch(label="Тема (Светлая/Тёмная)", on_change=self.theme_changed)
-        self.current_word_index_control = ft.Slider(
-            min=0,
-            max=1000,
-            value=self.current_word_index,
-            divisions=100,
+
+        if self.current_word_indices < self.get_index_words_min():
+            self.current_word_indices = self.get_index_words_min()
+
+        if self.current_word_indices > self.get_index_words_max():
+            self.current_word_indices = self.get_index_words_max()
+
+        self.words_slider = ft.Slider(
+            min=self.get_index_words_min() + 1,
+            max=self.get_index_words_max() + 1,
+            value=self.current_word_indices + 1,
+            divisions=self.get_words_slider_divisions(),
             label="{value}",
             on_change=self.set_current_word_index,
         )
-        self.storage_current_word_index_button = ft.ElevatedButton(text="Сохранить текущую позицию", on_click=self.storage_current_word_index_click)
+
         self.learning_words_radiogroup = ft.RadioGroup(
             content=ft.Column(
                 [
@@ -133,6 +200,18 @@ class WordTrainer:
             rows=self.create_table_rows(),
         )
 
+        self.exit_modal = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Please confirm"),
+            content=ft.Text("Do you really want to exit this app?"),
+            actions=[
+                ft.TextButton("Yes", on_click=self.exit_modal_yes_click),
+                ft.TextButton("No", on_click=self.exit_modal_no_click),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            # on_dismiss=lambda e: self.page.add(ft.Text("Modal dialog dismissed")),
+        )
+
         # Инициализация страниц
         self.setup_pages()
 
@@ -154,6 +233,13 @@ class WordTrainer:
         """Загрузка выбранного списка слов."""
         self.current_list_name = list_name
         self.selected_words_bool = decompress_bool_list_from_hex(self.word_lists[list_name], len(self.words))
+        self.current_word_indices = self.get_index_words_min()
+
+        self.words_slider.min = self.get_index_words_min() + 1
+        self.words_slider.max = self.get_index_words_max() + 1
+        self.words_slider.value = self.current_word_indices + 1
+        self.words_slider.divisions = self.get_words_slider_divisions()
+
         self.paginated_table.set_rows(self.create_table_rows())
         self.list_name_input.value = '' if list_name == 'default' else list_name
         self.update_list_selector()
@@ -233,9 +319,10 @@ class WordTrainer:
                 ft.Row([self.second_row_word_display, self.second_row_transcription_word_display], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 ft.Row([self.start_button, self.stop_button], alignment=ft.MainAxisAlignment.CENTER),
                 ft.Row(),
-                ft.Row([self.storage_current_word_index_button], alignment=ft.MainAxisAlignment.CENTER),
-                ft.Row(),
                 ft.Row([ft.ElevatedButton(text="Повторить", on_click=self.repeat_current_word_index)], alignment=ft.MainAxisAlignment.CENTER),
+                ft.Row(),
+                ft.Row([ft.Text("Текущая позиция", weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER),
+                self.words_slider,
             ]
         )
 
@@ -259,7 +346,7 @@ class WordTrainer:
                     ft.ElevatedButton(text="Сохранить изменения", on_click=self.save_datatable_button_click),
                     ft.ElevatedButton(text="Удалить текущий список", on_click=self.delete_list_button_click),
                 ]),
-                self.create_paginated_table(),
+                self.paginated_table.container,
             ]
         )
 
@@ -299,8 +386,6 @@ class WordTrainer:
             controls=[
                 ft.Text("Скорость:"),
                 self.delay_control,
-                ft.Text("Номер текущего слова:"),
-                self.current_word_index_control,
                 self.transcription_control,
                 ft.Text("Установите цвет слов:"),
                 self.create_color_dropdown("Английского", self.english_color, self.english_color_dropdown_changed),
@@ -333,13 +418,17 @@ class WordTrainer:
     def selected_navbar(self, e):
         """Обработчик выбора пункта в навигационной панели."""
         if e.control.selected_index == 0:
-            pass  # Главная страница
+            self.page.go("/")
         elif e.control.selected_index == 1:
-            pass  # Страница проекта
+            self.page.go("training-page")
         elif e.control.selected_index == 2:
-            self.page.open(self.confirm_dialog)  # Выход
+            self.page.go("dictionary-page")
+        elif e.control.selected_index == 3:
+            self.page.go("statistic-page")
+        elif e.control.selected_index == 4:
+            self.page.open(self.exit_modal)
         else:
-            self.page.go("/")  # Возврат на главную
+            self.page.go("/")
 
     def selected_drawer(self, e):
         """Обработчик выбора пункта в боковом меню."""
@@ -373,7 +462,10 @@ class WordTrainer:
             on_change=self.selected_navbar,
             destinations=[
                 ft.NavigationDrawerDestination(label="Menu", icon=ft.Icon(ft.Icons.GRID_VIEW_ROUNDED)),
-                ft.NavigationDrawerDestination(label="Project", icon=ft.Icon(ft.Icons.ROCKET_LAUNCH_OUTLINED)),
+                # ft.NavigationDrawerDestination(label="Training", icon=ft.Icon(ft.Icons.AUDIOTRACK)),
+                ft.NavigationDrawerDestination(label="Training", icon=ft.Icon(ft.Icons.ROCKET_LAUNCH_OUTLINED)),
+                ft.NavigationDrawerDestination(label="Dictionary", icon=ft.Icon(ft.Icons.TABLE_ROWS_ROUNDED)),
+                ft.NavigationDrawerDestination(label="Statistic", icon=ft.Icon(ft.Icons.SHOW_CHART_ROUNDED)),
                 ft.NavigationDrawerDestination(label="Exit", icon=ft.Icon(ft.Icons.CANCEL)),
             ]
         )
@@ -392,8 +484,10 @@ class WordTrainer:
                 ft.Divider(thickness=2),
                 ft.Text("DevTools:", size=20, text_align=ft.TextAlign.CENTER),
                 ft.NavigationDrawerDestination(label="Storage", icon=ft.Icons.STORAGE, selected_icon=ft.Icon(ft.Icons.STORAGE_OUTLINED)),
-                ft.NavigationDrawerDestination(label="Создать Тестовую статистики", icon=ft.Icons.DEVELOPER_MODE, selected_icon=ft.Icon(ft.Icons.DEVELOPER_MODE_OUTLINED)),
-                ft.NavigationDrawerDestination(label="Удалить Тестовую статистики", icon=ft.Icons.DEVELOPER_MODE, selected_icon=ft.Icon(ft.Icons.DEVELOPER_MODE_OUTLINED)),
+                # ft.NavigationDrawerDestination(label="Создать Тестовую статистики", icon=ft.Icons.DEVELOPER_MODE, selected_icon=ft.Icon(ft.Icons.DEVELOPER_MODE_OUTLINED)),
+                # ft.NavigationDrawerDestination(label="Удалить Тестовую статистики", icon=ft.Icons.DEVELOPER_MODE, selected_icon=ft.Icon(ft.Icons.DEVELOPER_MODE_OUTLINED)),
+                ft.NavigationDrawerDestination(label="Создать Тестовую статистики", icon=ft.Icons.SHOW_CHART_ROUNDED, selected_icon=ft.Icon(ft.Icons.SHOW_CHART_OUTLINED)),
+                ft.NavigationDrawerDestination(label="Удалить Тестовую статистики", icon=ft.Icons.SHOW_CHART_ROUNDED, selected_icon=ft.Icon(ft.Icons.SHOW_CHART_OUTLINED)),
             ],
         )
 
@@ -426,30 +520,6 @@ class WordTrainer:
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)),
             on_click=on_click,
         )
-
-    def create_paginated_table(self):
-        """Создание таблицы с пагинацией."""
-        return PaginatedDataTable(
-            width=700,
-            border=ft.border.all(2, "red"),
-            border_radius=10,
-            vertical_lines=ft.BorderSide(3, "blue"),
-            horizontal_lines=ft.BorderSide(1, "green"),
-            sort_column_index=0,
-            sort_ascending=True,
-            heading_row_color=ft.Colors.BLACK12,
-            heading_row_height=100,
-            data_row_color={ft.ControlState.HOVERED: "0x30FF0000"},
-            show_checkbox_column=True,
-            divider_thickness=0,
-            column_spacing=20,
-            columns=[
-                ft.DataColumn(ft.Text("Номер"), numeric=True),
-                ft.DataColumn(ft.Text("Слово")),
-            ],
-            rows_per_page=50,
-            rows=self.create_table_rows(),
-        ).container
 
     def create_table_rows(self):
         """Создание строк для таблицы."""
@@ -559,7 +629,6 @@ class WordTrainer:
         pattern = f'statistics.{selected_year}-{selected_month}'
         for key in self.storage.get_keys(pattern):
             raw_monthly_statistics[key] = self.storage.get(key)
-
         # Сортировка по дням
         return dict(sorted(raw_monthly_statistics.items(), key=lambda item: int(item[0].split('-')[-1])))
 
@@ -615,6 +684,8 @@ class WordTrainer:
         """Обработчик нажатия на кнопку 'Старт'."""
         self.start_button.disabled = True
         self.stop_button.disabled = False
+        if self.current_word_indices > self.get_position_last_true(self.selected_words_bool):
+            self.current_word_indices = self.get_index_words_min()
         self.page.update()
         threading.Thread(target=self.start_learning, daemon=True).start()
 
@@ -638,14 +709,9 @@ class WordTrainer:
         self.page.update()
 
     def set_current_word_index(self, e):
-        """Установка текущего индекса слова."""
-        self.current_word_index = int(self.current_word_index_control.value)
-        self.storage.set("current_word_index", self.current_word_index)
-        self.page.update()
-
-    def storage_current_word_index_click(self, e):
-        """Сохранение текущего индекса слова в хранилище."""
-        self.storage.set("current_word_index", self.current_word_index)
+        """Установка текущего индекса слова для текущего списка."""
+        self.current_word_indices = int(self.words_slider.value) - 1
+        self.storage.set("current_word_indices", self.current_word_indices)
         self.page.update()
 
     def learning_words_radiogroup_changed(self, e):
@@ -679,10 +745,12 @@ class WordTrainer:
         self.page.update()
 
     def repeat_current_word_index(self, e):
-        """Повтор текущего слова."""
-        self.current_word_index -= 2
-        if self.current_word_index < 0:
-            self.current_word_index = 0
+        """Повтор текущего слова для текущего списка."""
+        self.current_word_indices -= 2
+        if self.current_word_indices < self.get_index_words_min():
+            self.current_word_indices = self.get_index_words_min()
+        self.words_slider.value = self.current_word_indices + 1
+        self.index_display.value = self.current_word_indices + 1
         self.page.update()
 
     def data_table_on_select_changed(self, e):
@@ -740,35 +808,42 @@ class WordTrainer:
             self.monthly_statistics[datetime.now().strftime('statistics.%Y-%m-%d')] = 0
             self.storage.set(datetime.now().strftime('statistics.%Y-%m-%d'), 0)
 
-        while self.is_running and self.current_word_index < len(self.words):
-            logger.info(f'current_word_index: {self.current_word_index}')
+        if self.current_list_name == 'default':
+            length = len(self.words)
+        else:
+            length = self.get_position_last_true(self.selected_words_bool)
+
+        while self.is_running and self.current_word_indices < length:
+            # logger.info(f'current_word_index for {self.current_list_name}: {self.current_word_indices}')
 
             if self.current_list_name == 'default':
-                self.selected_words_bool[self.current_word_index] = True
+                self.selected_words_bool[self.current_word_indices] = True
 
-            if not self.selected_words_bool[self.current_word_index]:
-                self.current_word_index += 1
+            if not self.selected_words_bool[self.current_word_indices]:
+                self.current_word_indices += 1
                 continue  # Пропускаем слово, не выбранное для изучения
 
             duration_sec = int(time.time() - start_time)
             self.session_duration_sec = duration_sec
             current_date_key = datetime.now().strftime('statistics.%Y-%m-%d')
 
-            logger.debug(f'duration_sec: {duration_sec}')
-            logger.debug(f'session_duration_min: {self.session_duration_min}')
-            logger.debug(f'monthly_statistics[current_date_key]: {self.monthly_statistics[current_date_key]}')
-            logger.info(f'monthly_statistics: {self.monthly_statistics}')
+            # logger.debug(f'duration_sec: {duration_sec}')
+            # logger.debug(f'session_duration_min: {self.session_duration_min}')
+            # logger.debug(f'monthly_statistics[current_date_key]: {self.monthly_statistics[current_date_key]}')
+            # logger.info(f'monthly_statistics: {self.monthly_statistics}')
 
             if current_date_key not in self.monthly_statistics:
-                logger.debug('if current_date_key not in monthly_statistics:')
+                # logger.debug('if current_date_key not in monthly_statistics:')
                 self.monthly_statistics[current_date_key] = duration_sec // 60
                 self.storage.set(current_date_key, self.monthly_statistics[current_date_key])
 
             if (duration_sec // 60) > self.session_duration_min:
-                logger.debug('if (duration_sec // 60) > session_duration_min:')
+                # logger.debug('if (duration_sec // 60) > session_duration_min:')
                 self.monthly_statistics[current_date_key] += 1
                 self.session_duration_min += 1
                 self.storage.set(current_date_key, self.monthly_statistics[current_date_key])
+
+            self.words_slider.value = self.current_word_indices + 1
 
             self.duration_time.spans = [
                 ft.TextSpan(
@@ -776,14 +851,9 @@ class WordTrainer:
                 ),
             ]
 
-            self.index_display.spans = [
-                ft.TextSpan(
-                    f'{self.current_word_index + 1}',
-                    ft.TextStyle(size=30),
-                ),
-            ]
+            self.index_display.value = f'{self.current_word_indices + 1}'
 
-            english_word, english_transcription, russian_translation = self.words[self.current_word_index]
+            english_word, english_transcription, russian_translation = self.words[self.current_word_indices]
 
             if self.order_learning_words == '1':
                 self.first_row_word_display.spans = [
@@ -843,7 +913,23 @@ class WordTrainer:
                 self.page.update()
                 time.sleep(0.5 + len(english_word + english_transcription) * 0.2 / self.delay)
 
-            self.current_word_index += 1
+            self.current_word_indices += 1
+            # print(f'*** self.current_word_indices[self.current_list_name]: {self.current_word_indices}')
+            # print(f'*** self.words_slider.value: {self.words_slider.value}')
+            # print(f'*** self.words_slider.min: {self.words_slider.min}')
+            # print(f'*** self.words_slider.max: {self.words_slider.max}')
+
+            if self.current_list_name == 'default':
+                length = len(self.words)
+            else:
+                length = self.get_position_last_true(self.selected_words_bool)
+
+                if self.words_slider.value > length:
+                    self.words_slider.value = length
+
+            if self.current_word_indices >= length:
+                self.current_word_indices = length - 1
+                break
 
         self.is_running = False
         self.start_button.disabled = False
