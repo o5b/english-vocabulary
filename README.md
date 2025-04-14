@@ -5,8 +5,8 @@
 ### Install dependencies from `requirements.txt`:
 
 ```
-git clone https://github.com/o5b/...
-cd ...
+git clone https://github.com/o5b/english-vocabulary.git
+cd english-vocabulary/
 python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -35,7 +35,7 @@ poetry run flet run
 ### Android
 
 ```
-cd ...
+cd english-vocabulary/
 source venv/bin/activate
 pip cache purge
 flet build apk -v
